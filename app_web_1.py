@@ -7,7 +7,6 @@ import streamlit as st
 # 1. USER PROFILE, CERTIFICATIONS & CONFIGURATION
 # ==============================================================================
 
-# Added 'juniper', 'nat', and 'load balancer' to your profile
 MY_SKILLS = {
     # Certifications
     "aws certified solutions architect – associate",
@@ -59,11 +58,10 @@ GOVERNMENT_KEYWORDS = [
     "state agency", "municipal", "gov environment", "cleared environment"
 ]
 
-gov_terms = detect_government_environment(jd_text)
-
 # ==============================================================================
 # 2. HELPER & SCRAPING FUNCTIONS
 # ==============================================================================
+
 def detect_government_environment(text):
     text_lower = text.lower()
     matched = [term.title() for term in GOVERNMENT_KEYWORDS if re.search(r"\b" + re.escape(term) + r"\b", text_lower)]
@@ -145,13 +143,7 @@ def extract_uptime_percentage(text):
     pattern = r"\b(99\.\d+)%\s*(?:uptime|availability)?\b"
     match = re.search(pattern, text, re.IGNORECASE)
     return match.group(0) if match else None
-    
-# Usage inside script:
 
-
-if gov_terms:
-    st.warning(f"🏛️ **Government Environment Detected:** {', '.join(gov_terms)}")
-    
 # ==============================================================================
 # 3. STREAMLIT UI (MOBILE & ANDROID FRIENDLY)
 # ==============================================================================
@@ -205,6 +197,9 @@ with tab_text:
 if jd_text:
     jd_lower = jd_text.lower()
 
+    # Government environment check
+    gov_terms = detect_government_environment(jd_text)
+
     # 1. Location & Double-Checker
     indiana_locations_found = detect_indiana_locations(jd_text)
     location_ok, location_status = evaluate_location_and_workmode(jd_text)
@@ -235,6 +230,10 @@ if jd_text:
         matched_preferred.append(f"Uptime Metric ({detected_uptime})")
 
     st.divider()
+
+    # Government Warning Display
+    if gov_terms:
+        st.warning(f"🏛️ **Government / Public Sector Environment Detected:** {', '.join(gov_terms)}")
 
     # Dealbreakers Display
     if found_dealbreakers:
