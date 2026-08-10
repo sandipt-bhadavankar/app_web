@@ -32,7 +32,7 @@ MASTER_SKILL_CATALOG = {
     "infoblox", "dns", "dhcp", "ipam", "f5", "netscaler", "load balancer"
 }
 
-PREFERRED_TERMS = ["automation", "remote", "hybrid", "load balancer", "f5", "netscaler", "transit gateway"]
+PREFERRED_TERMS = ["automation", "remote", "hybrid", "load balancer", "f5", "netscaler", "transit gateway", "24/7", "24*7"]
 
 APPROVED_INDIANA_CITIES = ["greenwood", "columbus", "indianapolis", "bloomington", "carmel"]
 
