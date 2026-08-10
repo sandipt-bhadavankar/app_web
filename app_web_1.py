@@ -1,11 +1,12 @@
 import re
+import requests
+from bs4 import BeautifulSoup
 import streamlit as st
 
 # ==============================================================================
-# 1. USER PROFILE, CERTIFICATIONS & LOCATION SETTINGS
+# 1. USER PROFILE, CERTIFICATIONS & CONFIGURATION
 # ==============================================================================
 
-# Personal skill profile including certifications and technical skills
 MY_SKILLS = {
     # Certifications
     "aws certified solutions architect – associate",
@@ -14,137 +15,91 @@ MY_SKILLS = {
     "pcnsa",
     "ccna",
     # Technical Skills
-    "palo alto",
-    "cisco",
-    "aws",
-    "bgp",
-    "ospf",
-    "nexus",
-    "vpn",
-    "firewall",
-    "python",
-    "wireshark",
-    "infoblox",
+    "palo alto", "cisco", "aws", "bgp", "ospf", "nexus",
+    "vpn", "firewall", "python", "wireshark", "infoblox"
 }
 
-# Master catalog used to detect what skills the Job Description requires
 MASTER_SKILL_CATALOG = {
-    # Certifications
     "aws certified solutions architect – associate",
     "palo alto networks certified network security administrator (pcnsa)",
     "cisco certified network associate (ccna)",
-    "pcnsa",
-    "ccna",
-    "ccnp",
-    "pcnsc",
-    # Networking & Routing
+    "pcnsa", "ccna", "ccnp", "pcnsc",
     "cisco", "bgp", "ospf", "nexus", "juniper", "arista", "sd-wan", "mpls", "eigrp",
-    # Security & Firewalls
     "palo alto", "firewall", "vpn", "fortinet", "checkpoint", "nat", "ipsec", "wireshark",
-    # Cloud & Infrastructure
     "aws", "azure", "gcp", "transit gateway", "vpc", "direct connect",
-    # Automation & Scripting
     "python", "ansible", "terraform", "bash", "git", "rest api",
-    # Network Services & Load Balancing
     "infoblox", "dns", "dhcp", "ipam", "f5", "netscaler", "load balancer"
 }
 
-PREFERRED_TERMS = [
-    "automation",
-    "remote",
-    "hybrid",
-    "load balancer",
-    "f5",
-    "netscaler",
-    "transit gateway",
-]
+PREFERRED_TERMS = ["automation", "remote", "hybrid", "load balancer", "f5", "netscaler", "transit gateway"]
 
-# Approved Cities for Onsite / Hybrid roles
-APPROVED_INDIANA_CITIES = [
-    "greenwood",
-    "columbus",
-    "indianapolis",
-    "bloomington",
-    "carmel",
-]
+APPROVED_INDIANA_CITIES = ["greenwood", "columbus", "indianapolis", "bloomington", "carmel"]
 
-# Common Indiana cities catalog for the double-checker
 COMMON_INDIANA_CITIES = [
     "indianapolis", "columbus", "greenwood", "bloomington", "carmel",
     "fishers", "noblesville", "westfield", "fort wayne", "evansville",
     "south bend", "lafayette", "west lafayette", "terre haute", "muncie",
     "kokomo", "anderson", "elkhart", "mishawaka", "lawrence", "jeffersonville",
-    "plainfield", "avon", "zionsville", "greenwood", "beech grove", "marion"
+    "plainfield", "avon", "zionsville", "beech grove", "marion"
 ]
 
-REMOTE_KEYWORDS = [
-    "remote",
-    "work from home",
-    "wfh",
-    "telecommute",
-    "100% remote",
-    "virtual",
-]
-
-TRAVEL_KEYWORDS = [
-    "field based",
-    "field-based",
-    "field remote",
-    "road warrior",
-    "telecommute with travel",
-    "remote with travel",
-]
-
-# Updated Dealbreakers List
-DEALBREAKERS = [
-    "clearance required",
-    "top secret",
-    "unpaid",
-]
+REMOTE_KEYWORDS = ["remote", "work from home", "wfh", "telecommute", "100% remote", "virtual"]
+TRAVEL_KEYWORDS = ["field based", "field-based", "field remote", "road warrior", "telecommute with travel", "remote with travel"]
+DEALBREAKERS = ["clearance required", "top secret", "unpaid"]
 
 MAX_ALLOWED_TRAVEL_PCT = 20
 
+# ==============================================================================
+# 2. HELPER & SCRAPING FUNCTIONS
+# ==============================================================================
 
-# ==============================================================================
-# 2. HELPER FUNCTIONS
-# ==============================================================================
+def fetch_jd_from_url(url):
+    """
+    Attempts to fetch and extract raw text from a Job Description URL.
+    Returns (success_boolean, content_or_error_message).
+    """
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0.0.0 Safari/537.36"
+        )
+    }
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.text, "html.parser")
+            # Remove scripts, styles, and extra elements
+            for element in soup(["script", "style", "nav", "footer", "header"]):
+                element.decompose()
+            text = soup.get_text(separator=" ")
+            clean_text = " ".join(text.split())
+            
+            if len(clean_text) < 150:
+                return False, "Fetched content was too short. The page might require login or anti-bot verification."
+            return True, clean_text
+        else:
+            return False, f"HTTP Error {response.status_code}: Unable to access job page directly."
+    except Exception as e:
+        return False, f"Could not connect to URL: {str(e)}"
+
 def detect_indiana_locations(text):
-    """
-    Double-checker function: Extracts any Indiana city or 'City, IN / Indiana' pattern from the JD.
-    """
     detected = set()
-
-    # 1. Regex pattern for "City Name, IN" or "City Name, Indiana"
     pattern = r"\b([A-Za-z\s]{3,20}),?\s*(?:IN|Indiana)\b"
     matches = re.findall(pattern, text, re.IGNORECASE)
     for m in matches:
         clean_name = m.strip().title()
         if clean_name.lower() not in ["in", "indiana", "state"]:
             detected.add(clean_name)
-
-    # 2. Match against catalog of Indiana cities
     for city in COMMON_INDIANA_CITIES:
         if re.search(r"\b" + re.escape(city) + r"\b", text, re.IGNORECASE):
             detected.add(city.title())
-
     return sorted(list(detected))
 
-
 def evaluate_location_and_workmode(text):
-    """
-    Evaluates if the job location meets criteria:
-    - Remote jobs are OK anywhere.
-    - Onsite/Hybrid jobs MUST be in Greenwood, Columbus, Indianapolis, Bloomington, or Carmel.
-    """
     text_lower = text.lower()
-
-    # 1. Check if Remote
     is_remote = any(keyword in text_lower for keyword in REMOTE_KEYWORDS)
-
-    # 2. Check for Approved Local Cities
-    found_approved_city = next(
-        (city for city in APPROVED_INDIANA_CITIES if city in text_lower), None
-    )
+    found_approved_city = next((city for city in APPROVED_INDIANA_CITIES if city in text_lower), None)
 
     if is_remote:
         if found_approved_city:
@@ -154,182 +109,152 @@ def evaluate_location_and_workmode(text):
     if found_approved_city:
         return True, f"Approved local city detected: {found_approved_city.title()}, IN"
 
-    # 3. Onsite/Hybrid role outside approved cities/states
     return False, "Onsite/Hybrid role outside approved Indiana cities (Greenwood, Columbus, Indianapolis, Bloomington, Carmel)"
 
-
 def extract_travel_info(text):
-    """Detects dynamic travel percentages and employer travel phrasing."""
     pattern = r"(?:(\d{1,3})%\s*travel|travel[^\n]*?(\d{1,3})%)"
     matches = re.findall(pattern, text, re.IGNORECASE)
-
-    percentages = []
-    for match in matches:
-        num = match[0] or match[1]
-        if num:
-            percentages.append(int(num))
-
+    percentages = [int(m[0] or m[1]) for m in matches if (m[0] or m[1])]
     detected_pct = max(percentages) if percentages else 0
     detected_terms = [t for t in TRAVEL_KEYWORDS if t.lower() in text.lower()]
-
     return detected_pct, detected_terms
 
-
 def extract_uptime_percentage(text):
-    """Captures uptime SLAs (e.g., '99.9%', '99.99%')."""
     pattern = r"\b(99\.\d+)%\s*(?:uptime|availability)?\b"
     match = re.search(pattern, text, re.IGNORECASE)
     return match.group(0) if match else None
 
-
 # ==============================================================================
-# 3. STREAMLIT USER INTERFACE
+# 3. STREAMLIT UI (MOBILE & ANDROID FRIENDLY)
 # ==============================================================================
-st.set_page_config(page_title="JD vs. Skillset Matcher", page_icon="🎯", layout="wide")
 
-st.title("🎯 Job Description vs. My Skillset Matcher")
-st.write("Paste a job description to evaluate matching skills, location/remote policy, travel requirements, and dealbreakers.")
+st.set_page_config(page_title="JD Matcher (Mobile)", page_icon="📱", layout="centered")
 
-# Sidebar - Profile & Approved Cities View
+st.title("🎯 JD vs. Skillset Matcher")
+st.caption("Paste a URL or raw text below to analyze job qualifications, location, and dealbreakers.")
+
+# Sidebar Controls
 with st.sidebar:
-    st.header("👤 My Profile & Qualifications")
-    for skill in sorted([s.title() for s in MY_SKILLS]):
-        st.write(f"- {skill}")
+    st.header("⚙️ Profile & Settings")
+    max_travel_limit = st.number_input("Max Allowed Travel (%)", min_value=0, max_value=100, value=MAX_ALLOWED_TRAVEL_PCT, step=5)
+    
+    st.divider()
+    st.subheader("👤 My Skills")
+    for s in sorted([sk.title() for sk in MY_SKILLS]):
+        st.write(f"- {s}")
+
+# Input Tabs for URL vs Text Paste
+tab_url, tab_text = st.tabs(["🔗 Analyze via URL", "📝 Paste Text JD"])
+
+jd_text = ""
+
+with tab_url:
+    jd_url = st.text_input("Enter Job URL:", placeholder="https://example.com/job/12345")
+    if st.button("Fetch & Analyze URL", type="primary", use_container_width=True):
+        if not jd_url.strip():
+            st.warning("Please enter a URL first.")
+        else:
+            with st.spinner("Fetching job posting..."):
+                success, result = fetch_jd_from_url(jd_url)
+                if success:
+                    st.success("Successfully extracted JD from URL!")
+                    jd_text = result
+                else:
+                    st.error(f"❌ Scraping Failed: {result}")
+                    st.info("💡 **Mobile Tip:** Many sites (LinkedIn/Indeed) block URL scraping. Switch to the **'Paste Text JD'** tab to paste the text directly.")
+
+with tab_text:
+    pasted_text = st.text_area("Paste Full JD Text Here:", height=250)
+    if st.button("Analyze Text JD", type="primary", use_container_width=True):
+        if not pasted_text.strip():
+            st.warning("Please paste text first.")
+        else:
+            jd_text = pasted_text
+
+# ==============================================================================
+# 4. ANALYSIS & RESULTS DISPLAY
+# ==============================================================================
+
+if jd_text:
+    jd_lower = jd_text.lower()
+
+    # 1. Location & Double Checker
+    indiana_locations_found = detect_indiana_locations(jd_text)
+    location_ok, location_status = evaluate_location_and_workmode(jd_text)
+
+    # 2. Skill Comparison
+    jd_skills_detected = {s for s in MASTER_SKILL_CATALOG if s.lower() in jd_lower}
+    matched_skills = MY_SKILLS.intersection(jd_skills_detected)
+    missing_skills = jd_skills_detected.difference(MY_SKILLS)
+    unused_my_skills = MY_SKILLS.difference(jd_skills_detected)
+
+    total_jd_skills = len(jd_skills_detected)
+    match_score = int((len(matched_skills) / total_jd_skills) * 100) if total_jd_skills > 0 else 0
+
+    # 3. Dynamic Travel & Uptime
+    detected_travel_pct, detected_travel_terms = extract_travel_info(jd_text)
+    detected_uptime = extract_uptime_percentage(jd_text)
+
+    # 4. Dealbreakers
+    found_dealbreakers = [term for term in DEALBREAKERS if term.lower() in jd_lower]
+    if not location_ok:
+        found_dealbreakers.append(f"Location Rule: {location_status}")
+    if detected_travel_pct > max_travel_limit:
+        found_dealbreakers.append(f"High Travel Required ({detected_travel_pct}% exceeds {max_travel_limit}% limit)")
+
+    # 5. Preferred
+    matched_preferred = [term for term in PREFERRED_TERMS if term.lower() in jd_lower]
+    if detected_uptime:
+        matched_preferred.append(f"Uptime Metric ({detected_uptime})")
 
     st.divider()
-    st.header("📍 Approved Local Cities")
-    st.caption("Onsite/Hybrid roles must be in one of these locations:")
-    for city in sorted([c.title() for c in APPROVED_INDIANA_CITIES]):
-        st.write(f"- {city}, IN")
+
+    # Dealbreaker Banner
+    if found_dealbreakers:
+        st.error("⛔ **DEALBREAKERS DETECTED**")
+        for db in found_dealbreakers:
+            st.write(f"- ❌ {db}")
+        st.divider()
+
+    # Metrics Layout (Mobile friendly 2x2 grid)
+    c1, c2 = st.columns(2)
+    c1.metric("Match Score", f"{match_score}%")
+    c2.metric("JD Skills Found", f"{total_jd_skills}")
+    
+    c3, c4 = st.columns(2)
+    c3.metric("Your Skills Matched", f"{len(matched_skills)}")
+    c4.metric("Travel Required", f"{detected_travel_pct}%" if detected_travel_pct > 0 else "None/Unlisted")
 
     st.divider()
-    max_travel_limit = st.number_input(
-        "Max Allowed Travel (%)",
-        min_value=0,
-        max_value=100,
-        value=MAX_ALLOWED_TRAVEL_PCT,
-        step=5,
-    )
 
-jd_input = st.text_area("Paste Job Description (JD) Here:", height=300)
-
-if st.button("Analyze Job Description", type="primary"):
-    if not jd_input.strip():
-        st.warning("Please paste a job description first.")
+    # Location & Double-Checker
+    st.subheader("📍 Location Analysis")
+    if location_ok:
+        st.success(f"✔ {location_status}")
     else:
-        jd_lower = jd_input.lower()
+        st.error(f"❌ {location_status}")
 
-        # 1. Double-Checker & Location Evaluation
-        indiana_locations_found = detect_indiana_locations(jd_input)
-        location_ok, location_status = evaluate_location_and_workmode(jd_input)
+    if indiana_locations_found:
+        st.info(f"🔍 **IN Double-Checker Found:** {', '.join(indiana_locations_found)}")
+    else:
+        st.write("🔍 **IN Double-Checker:** No explicit Indiana city detected.")
 
-        # 2. Skill & Certification Comparison
-        jd_skills_detected = {
-            skill for skill in MASTER_SKILL_CATALOG if skill.lower() in jd_lower
-        }
+    st.divider()
 
-        matched_skills = MY_SKILLS.intersection(jd_skills_detected)
-        missing_skills = jd_skills_detected.difference(MY_SKILLS)
-        unused_my_skills = MY_SKILLS.difference(jd_skills_detected)
+    # Skills Breakdown
+    st.subheader("✅ Skills Matched")
+    if matched_skills:
+        for sk in sorted(matched_skills):
+            st.success(f"✔ **{sk.title()}**")
+    else:
+        st.write("None of your listed skills matched.")
 
-        # Score calculation
-        total_jd_skills = len(jd_skills_detected)
-        match_score = int((len(matched_skills) / total_jd_skills) * 100) if total_jd_skills > 0 else 0
+    st.subheader("⚠️ Missing Requirements")
+    if missing_skills:
+        for sk in sorted(missing_skills):
+            st.error(f"✖ **{sk.title()}**")
+    else:
+        st.info("🎉 You meet all requested qualifications!")
 
-        # 3. Dynamic Travel & Uptime Extraction
-        detected_travel_pct, detected_travel_terms = extract_travel_info(jd_input)
-        detected_uptime = extract_uptime_percentage(jd_input)
-
-        # 4. Dealbreaker Checks
-        found_dealbreakers = [term for term in DEALBREAKERS if term.lower() in jd_lower]
-
-        if not location_ok:
-            found_dealbreakers.append(f"Location Rule: {location_status}")
-
-        if detected_travel_pct > max_travel_limit:
-            found_dealbreakers.append(
-                f"High Travel Required ({detected_travel_pct}% travel exceeds your {max_travel_limit}% limit)"
-            )
-
-        # 5. Preferred Terms Logic
-        matched_preferred = [term for term in PREFERRED_TERMS if term.lower() in jd_lower]
-        if detected_uptime:
-            matched_preferred.append(f"Uptime Metric ({detected_uptime})")
-
-        st.divider()
-
-        # --- DISPLAY RESULTS ---
-
-        # Dealbreaker Alert
-        if found_dealbreakers:
-            st.error("⛔ **DEALBREAKERS / LOCATION CONSTRAINTS DETECTED**")
-            for db in found_dealbreakers:
-                st.write(f"- ❌ {db}")
-            st.divider()
-
-        # Summary Metrics
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("JD Match Score", f"{match_score}%")
-        col2.metric("JD Skills / Certs Requested", f"{total_jd_skills}")
-        col3.metric("Your Qualifications Matched", f"{len(matched_skills)}")
-
-        travel_display = (
-            f"{detected_travel_pct}%"
-            if detected_travel_pct > 0
-            else ("Keywords Found" if detected_travel_terms else "None / Not Listed")
-        )
-        col4.metric("Detected Travel", travel_display)
-
-        st.divider()
-
-        # Location & Double-Checker Section
-        st.subheader("📍 Location Analysis & Indiana Double-Checker")
-        if location_ok:
-            st.success(f"✔ **Work Arrangement:** {location_status}")
-        else:
-            st.error(f"❌ **Work Arrangement:** {location_status}")
-
-        # Indiana Double-Checker Display
-        if indiana_locations_found:
-            st.info(f"🔍 **Indiana Locality Double-Checker:** Detected Indiana location(s) in JD: **{', '.join(indiana_locations_found)}**")
-        else:
-            st.write("🔍 **Indiana Locality Double-Checker:** No explicit Indiana city or 'City, IN' pattern detected.")
-
-        if detected_travel_pct > 0 or detected_travel_terms:
-            if detected_travel_pct > 0:
-                st.write(f"- **Travel Required:** `{detected_travel_pct}%`")
-            if detected_travel_terms:
-                st.write(f"- **Phrasing Detected:** {', '.join([f'`{t.title()}`' for t in detected_travel_terms])}")
-
-        st.divider()
-
-        # Side-by-Side Skills Breakdown
-        col_left, col_right = st.columns(2)
-
-        with col_left:
-            st.subheader("✅ Qualifications Matched")
-            if matched_skills:
-                for skill in sorted(matched_skills):
-                    st.success(f"✔ **{skill.title()}**")
-            else:
-                st.write("None of your listed skills/certifications matched this JD.")
-
-            st.subheader("⭐ Preferred / Bonus Terms Found")
-            if matched_preferred:
-                st.write(", ".join([f"`{p.title()}`" for p in matched_preferred]))
-            else:
-                st.write("None")
-
-        with col_right:
-            st.subheader("⚠️ Missing Skills / Gap Areas")
-            if missing_skills:
-                for skill in sorted(missing_skills):
-                    st.error(f"✖ **{skill.title()}** (Requested by JD, not in your profile)")
-            else:
-                st.info("🎉 No missing qualifications! You meet all detected JD requirements.")
-
-            st.subheader("💡 Your Extra Skills & Certs")
-            if unused_my_skills:
-                st.write(", ".join([f"`{s.title()}`" for s in sorted(unused_my_skills)]))
-            else:
-                st.write("All your qualifications were requested by this JD!")
+    st.subheader("⭐ Preferred Terms Found")
+    st.write(", ".join([f"`{p.title()}`" for p in matched_preferred]) if matched_preferred else "None")
