@@ -54,9 +54,18 @@ DEALBREAKERS = ["clearance required", "top secret", "unpaid"]
 
 MAX_ALLOWED_TRAVEL_PCT = 20
 
+GOVERNMENT_KEYWORDS = [
+    "government", "public sector", "federal", "dod", "department of defense",
+    "state agency", "municipal", "gov environment", "cleared environment"
+]
+
 # ==============================================================================
 # 2. HELPER & SCRAPING FUNCTIONS
 # ==============================================================================
+def detect_government_environment(text):
+    text_lower = text.lower()
+    matched = [term.title() for term in GOVERNMENT_KEYWORDS if re.search(r"\b" + re.escape(term) + r"\b", text_lower)]
+    return list(set(matched))
 
 def fetch_jd_from_url(url):
     headers = {
@@ -134,7 +143,13 @@ def extract_uptime_percentage(text):
     pattern = r"\b(99\.\d+)%\s*(?:uptime|availability)?\b"
     match = re.search(pattern, text, re.IGNORECASE)
     return match.group(0) if match else None
+    
+# Usage inside script:
+gov_terms = detect_government_environment(jd_text)
 
+if gov_terms:
+    st.warning(f"🏛️ **Government Environment Detected:** {', '.join(gov_terms)}")
+    
 # ==============================================================================
 # 3. STREAMLIT UI (MOBILE & ANDROID FRIENDLY)
 # ==============================================================================
