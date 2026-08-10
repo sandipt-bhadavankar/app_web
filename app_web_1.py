@@ -7,6 +7,7 @@ import streamlit as st
 # 1. USER PROFILE, CERTIFICATIONS & CONFIGURATION
 # ==============================================================================
 
+# Added 'juniper', 'nat', and 'load balancer' to your profile
 MY_SKILLS = {
     # Certifications
     "aws certified solutions architect – associate",
@@ -16,8 +17,8 @@ MY_SKILLS = {
     "ccna",
     # Technical Skills
     "palo alto", "cisco", "aws", "bgp", "ospf", "nexus",
-    "vpn", "firewall", "python", "wireshark", "infoblox"
-    "nat", "Nat", "network address translation"
+    "vpn", "firewall", "python", "wireshark", "infoblox",
+    "juniper", "nat", "load balancer"
 }
 
 MASTER_SKILL_CATALOG = {
@@ -32,7 +33,10 @@ MASTER_SKILL_CATALOG = {
     "infoblox", "dns", "dhcp", "ipam", "f5", "netscaler", "load balancer"
 }
 
-PREFERRED_TERMS = ["automation", "remote", "hybrid", "load balancer", "f5", "netscaler", "transit gateway", "24/7", "24*7", "24x7"]
+PREFERRED_TERMS = [
+    "automation", "remote", "hybrid", "load balancer", "f5", "netscaler", "transit gateway",
+    "24/7", "24x7", "24*7", "emea", "apac", "on-call", "on call"
+]
 
 APPROVED_INDIANA_CITIES = ["greenwood", "columbus", "indianapolis", "bloomington", "carmel"]
 
@@ -55,10 +59,6 @@ MAX_ALLOWED_TRAVEL_PCT = 20
 # ==============================================================================
 
 def fetch_jd_from_url(url):
-    """
-    Attempts to fetch and extract raw text from a Job Description URL.
-    Returns (success_boolean, content_or_error_message).
-    """
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -70,31 +70,41 @@ def fetch_jd_from_url(url):
         response = requests.get(url, headers=headers, timeout=10)
         if response.status_code == 200:
             soup = BeautifulSoup(response.text, "html.parser")
-            # Remove scripts, styles, and extra elements
             for element in soup(["script", "style", "nav", "footer", "header"]):
                 element.decompose()
             text = soup.get_text(separator=" ")
             clean_text = " ".join(text.split())
-            
             if len(clean_text) < 150:
-                return False, "Fetched content was too short. The page might require login or anti-bot verification."
+                return False, "Fetched content was too short. Page might require login or block scrapers."
             return True, clean_text
         else:
-            return False, f"HTTP Error {response.status_code}: Unable to access job page directly."
+            return False, f"HTTP Error {response.status_code}: Unable to fetch URL."
     except Exception as e:
-        return False, f"Could not connect to URL: {str(e)}"
+        return False, f"Connection Error: {str(e)}"
 
 def detect_indiana_locations(text):
+    """Refined double-checker to prevent capturing random prose text."""
     detected = set()
-    pattern = r"\b([A-Za-z\s]{3,20}),?\s*(?:IN|Indiana)\b"
-    matches = re.findall(pattern, text, re.IGNORECASE)
+    
+    # Require an explicit comma before IN/Indiana (e.g., "Indianapolis, IN")
+    pattern = r"\b([A-Za-z\s]{3,20}),\s*(?:IN|Indiana)\b"
+    matches = re.findall(pattern, text)
+    
+    ignore_list = {
+        "in", "indiana", "state", "city", "join", "posted", "located", 
+        "apply", "linked", "linkedin", "job", "jobs", "role", "work"
+    }
+
     for m in matches:
         clean_name = m.strip().title()
-        if clean_name.lower() not in ["in", "indiana", "state"]:
+        if clean_name.lower() not in ignore_list and len(clean_name) > 2:
             detected.add(clean_name)
+
+    # Check against catalog of Indiana cities
     for city in COMMON_INDIANA_CITIES:
         if re.search(r"\b" + re.escape(city) + r"\b", text, re.IGNORECASE):
             detected.add(city.title())
+
     return sorted(list(detected))
 
 def evaluate_location_and_workmode(text):
@@ -132,37 +142,36 @@ def extract_uptime_percentage(text):
 st.set_page_config(page_title="JD Matcher (Mobile)", page_icon="📱", layout="centered")
 
 st.title("🎯 JD vs. Skillset Matcher")
-st.caption("Paste a URL or raw text below to analyze job qualifications, location, and dealbreakers.")
+st.caption("Paste a URL or raw job text to analyze qualifications, location, and dealbreakers.")
 
-# Sidebar Controls
+# Sidebar Settings
 with st.sidebar:
-    st.header("⚙️ Profile & Settings")
+    st.header("⚙️ Profile Settings")
     max_travel_limit = st.number_input("Max Allowed Travel (%)", min_value=0, max_value=100, value=MAX_ALLOWED_TRAVEL_PCT, step=5)
-    
     st.divider()
-    st.subheader("👤 My Skills")
+    st.subheader("👤 My Profile Skills")
     for s in sorted([sk.title() for sk in MY_SKILLS]):
         st.write(f"- {s}")
 
-# Input Tabs for URL vs Text Paste
+# Tabs for Input Choice
 tab_url, tab_text = st.tabs(["🔗 Analyze via URL", "📝 Paste Text JD"])
 
 jd_text = ""
 
 with tab_url:
-    jd_url = st.text_input("Enter Job URL:", placeholder="https://example.com/job/12345")
+    jd_url = st.text_input("Enter Job URL:", placeholder="https://example.com/job/123")
     if st.button("Fetch & Analyze URL", type="primary", use_container_width=True):
         if not jd_url.strip():
             st.warning("Please enter a URL first.")
         else:
-            with st.spinner("Fetching job posting..."):
+            with st.spinner("Fetching job details..."):
                 success, result = fetch_jd_from_url(jd_url)
                 if success:
-                    st.success("Successfully extracted JD from URL!")
+                    st.success("Successfully loaded job details!")
                     jd_text = result
                 else:
                     st.error(f"❌ Scraping Failed: {result}")
-                    st.info("💡 **Mobile Tip:** Many sites (LinkedIn/Indeed) block URL scraping. Switch to the **'Paste Text JD'** tab to paste the text directly.")
+                    st.info("💡 **Android Tip:** Sites like LinkedIn block automated requests. Use the **'Paste Text JD'** tab if this fails.")
 
 with tab_text:
     pasted_text = st.text_area("Paste Full JD Text Here:", height=250)
@@ -173,17 +182,17 @@ with tab_text:
             jd_text = pasted_text
 
 # ==============================================================================
-# 4. ANALYSIS & RESULTS DISPLAY
+# 4. RESULTS DISPLAY
 # ==============================================================================
 
 if jd_text:
     jd_lower = jd_text.lower()
 
-    # 1. Location & Double Checker
+    # 1. Location & Double-Checker
     indiana_locations_found = detect_indiana_locations(jd_text)
     location_ok, location_status = evaluate_location_and_workmode(jd_text)
 
-    # 2. Skill Comparison
+    # 2. Skills Comparison
     jd_skills_detected = {s for s in MASTER_SKILL_CATALOG if s.lower() in jd_lower}
     matched_skills = MY_SKILLS.intersection(jd_skills_detected)
     missing_skills = jd_skills_detected.difference(MY_SKILLS)
@@ -199,25 +208,25 @@ if jd_text:
     # 4. Dealbreakers
     found_dealbreakers = [term for term in DEALBREAKERS if term.lower() in jd_lower]
     if not location_ok:
-        found_dealbreakers.append(f"Location Rule: {location_status}")
+        found_dealbreakers.append(f"Location Constraint: {location_status}")
     if detected_travel_pct > max_travel_limit:
         found_dealbreakers.append(f"High Travel Required ({detected_travel_pct}% exceeds {max_travel_limit}% limit)")
 
-    # 5. Preferred
+    # 5. Preferred Terms
     matched_preferred = [term for term in PREFERRED_TERMS if term.lower() in jd_lower]
     if detected_uptime:
         matched_preferred.append(f"Uptime Metric ({detected_uptime})")
 
     st.divider()
 
-    # Dealbreaker Banner
+    # Dealbreakers Display
     if found_dealbreakers:
         st.error("⛔ **DEALBREAKERS DETECTED**")
         for db in found_dealbreakers:
             st.write(f"- ❌ {db}")
         st.divider()
 
-    # Metrics Layout (Mobile friendly 2x2 grid)
+    # Mobile Metric Grid (2x2)
     c1, c2 = st.columns(2)
     c1.metric("Match Score", f"{match_score}%")
     c2.metric("JD Skills Found", f"{total_jd_skills}")
@@ -228,7 +237,7 @@ if jd_text:
 
     st.divider()
 
-    # Location & Double-Checker
+    # Location Section
     st.subheader("📍 Location Analysis")
     if location_ok:
         st.success(f"✔ {location_status}")
@@ -243,7 +252,7 @@ if jd_text:
     st.divider()
 
     # Skills Breakdown
-    st.subheader("✅ Skills Matched")
+    st.subheader("✅ Qualifications Matched")
     if matched_skills:
         for sk in sorted(matched_skills):
             st.success(f"✔ **{sk.title()}**")
@@ -258,4 +267,4 @@ if jd_text:
         st.info("🎉 You meet all requested qualifications!")
 
     st.subheader("⭐ Preferred Terms Found")
-    st.write(", ".join([f"`{p.title()}`" for p in matched_preferred]) if matched_preferred else "None")
+    st.write(", ".join([f"`{p.upper() if p in ['24/7', '24x7', '24*7', 'emea', 'apac'] else p.title()}`" for p in matched_preferred]) if matched_preferred else "None")
