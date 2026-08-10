@@ -59,6 +59,8 @@ GOVERNMENT_KEYWORDS = [
     "state agency", "municipal", "gov environment", "cleared environment"
 ]
 
+gov_terms = detect_government_environment(jd_text)
+
 # ==============================================================================
 # 2. HELPER & SCRAPING FUNCTIONS
 # ==============================================================================
@@ -145,7 +147,7 @@ def extract_uptime_percentage(text):
     return match.group(0) if match else None
     
 # Usage inside script:
-gov_terms = detect_government_environment(jd_text)
+
 
 if gov_terms:
     st.warning(f"🏛️ **Government Environment Detected:** {', '.join(gov_terms)}")
