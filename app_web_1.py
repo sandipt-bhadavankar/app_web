@@ -61,10 +61,50 @@ GOVERNMENT_KEYWORDS = [
     "state agency", "municipal", "gov environment", "cleared environment"
 ]
 
+# Updated Dealbreakers list to catch US Citizenship and Clearances
+DEALBREAKERS = [
+    "clearance required", "top secret", "ts/sci", "ts / sci", 
+    "sci eligible", "secret clearance", "unpaid", 
+    "us citizenship required", "u.s. citizenship required", 
+    "us citizen required", "u.s. citizen required", "citizenship required"
+]
+
 # ==============================================================================
 # 2. HELPER & SCRAPING FUNCTIONS
 # ==============================================================================
-
+def detect_citizenship_and_clearance(text):
+    """
+    Detects US Citizenship requirements and TS/SCI clearance constraints.
+    """
+    text_lower = text.lower()
+    
+    cit_patterns = [
+        r"\bu\.?s\.?\s+citizenship\s+required\b",
+        r"\bmust\s+be\s+a\s+u\.?s\.?\s+citizen\b",
+        r"\bu\.?s\.?\s+citizen\s+required\b",
+        r"\bcitizenship\s+required\b"
+    ]
+    
+    clearance_patterns = [
+        r"\bts/sci\b",
+        r"\bts\s*/\s*sci\b",
+        r"\btop\s+secret\b",
+        r"\bsci\s+eligible\b",
+        r"\bsecret\s+clearance\b"
+    ]
+    
+    found_requirements = []
+    
+    # Check Citizenship
+    if any(re.search(p, text_lower) for p in cit_patterns):
+        found_requirements.append("🇺🇸 US Citizenship Required")
+        
+    # Check Clearance
+    if any(re.search(p, text_lower) for p in clearance_patterns):
+        found_requirements.append("🔒 TS/SCI or Top Secret Clearance Required")
+        
+    return found_requirements
+    
 def detect_government_environment(text):
     """
     Detects government terms ONLY in clean, readable sentences to prevent
@@ -240,6 +280,9 @@ with tab_text:
 if jd_text:
     jd_lower = jd_text.lower()
 
+    # Citizenship & Clearance Check
+    cit_and_clearance_flags = detect_citizenship_and_clearance(jd_text)
+
     # Government environment check (returns terms and matched lines)
     gov_terms, gov_snippets = detect_government_environment(jd_text)
 
@@ -261,12 +304,21 @@ if jd_text:
     detected_uptime = extract_uptime_percentage(jd_text)
 
     # 4. Dealbreakers
+    # Update Dealbreakers Check
     found_dealbreakers = [term for term in DEALBREAKERS if term.lower() in jd_lower]
     if not location_ok:
         found_dealbreakers.append(f"Location Constraint: {location_status}")
     if detected_travel_pct > max_travel_limit:
         found_dealbreakers.append(f"High Travel Required ({detected_travel_pct}% exceeds {max_travel_limit}% limit)")
+    st.divider()
 
+    # Display Citizenship / TS/SCI Flags immediately if detected
+    if cit_and_clearance_flags:
+        st.error("🚨 **CRITICAL CONSTRAINTS DETECTED:**")
+        for flag in cit_and_clearance_flags:
+            st.write(f"- {flag}")
+        st.divider()
+        
     # 5. Preferred Terms
     matched_preferred = [term for term in PREFERRED_TERMS if term.lower() in jd_lower]
     if detected_uptime:
