@@ -64,23 +64,34 @@ GOVERNMENT_KEYWORDS = [
 
 def detect_government_environment(text):
     """
-    Detects government terms and extracts the exact sentences/lines where they appear.
+    Detects government terms and extracts short, clean context sentences
+    while filtering out job feed aggregators and sidebar text blocks.
     """
     text_lower = text.lower()
     matched_terms = [term.title() for term in GOVERNMENT_KEYWORDS if re.search(r"\b" + re.escape(term) + r"\b", text_lower)]
     
     matched_lines = []
     if matched_terms:
-        # Split text into sentences/lines
-        sentences = re.split(r'(?<=[.!?])\s+|\n+', text)
-        for sentence in sentences:
-            sentence_clean = sentence.strip()
-            # If line contains any government keyword, save it
+        # Split text by typical sentence/list boundaries
+        raw_chunks = re.split(r'[.!?\n•|▪–]|(?:\s{2,})', text)
+        
+        for chunk in raw_chunks:
+            sentence_clean = chunk.strip()
+            
+            if not sentence_clean:
+                continue
+                
+            # Filter out job aggregator noise (dates, salaries, feed headers)
+            if re.search(r"\d+\s*(?:days?|hours?|weeks?|months?)\s*ago", sentence_clean, re.IGNORECASE):
+                continue
+            if re.search(r"\$\d+|\b\d{2,3},\d{3}\b", sentence_clean):
+                continue
+
+            # If clean sentence contains government terms and is concise
             if any(re.search(r"\b" + re.escape(kw) + r"\b", sentence_clean, re.IGNORECASE) for kw in GOVERNMENT_KEYWORDS):
-                if sentence_clean and sentence_clean not in matched_lines:
+                if len(sentence_clean) <= 200 and sentence_clean not in matched_lines:
                     matched_lines.append(sentence_clean)
                     
-    # Limit output to top 2 context lines
     return list(set(matched_terms)), matched_lines[:2]
 
 def fetch_jd_from_url(url):
@@ -95,9 +106,12 @@ def fetch_jd_from_url(url):
         response = requests.get(url, headers=headers, timeout=10)
         if response.status_code == 200:
             soup = BeautifulSoup(response.text, "html.parser")
-            for element in soup(["script", "style", "nav", "footer", "header"]):
+            
+            # Remove non-content elements and sidebar job listings
+            for element in soup(["script", "style", "nav", "footer", "header", "aside", "form"]):
                 element.decompose()
-            text = soup.get_text(separator=" ")
+                
+            text = soup.get_text(separator=". ")
             clean_text = " ".join(text.split())
             if len(clean_text) < 150:
                 return False, "Fetched content was too short. Page might require login or block scrapers."
@@ -247,10 +261,12 @@ if jd_text:
 
     st.divider()
 
-# Government Warning Display
-if gov_terms:
-    st.warning(f"🏛️ **Government / Public Sector Environment Detected:** {', '.join(gov_terms)}")
-    st.info("📄 **Relevant Lines from JD:**\n" + "\n".join([f"> *\"{line}\"*" for line in gov_snippets]))
+    # Government Warning Display
+    if gov_terms:
+        st.warning(f"🏛️ **Government / Public Sector Environment Detected:** {', '.join(gov_terms)}")
+        if gov_snippets:
+            st.info("📄 **Relevant Lines from JD:**\n" + "\n".join([f"> *\"{line}\"*" for line in gov_snippets]))
+        st.divider()
 
     # Dealbreakers Display
     if found_dealbreakers:
