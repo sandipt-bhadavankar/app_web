@@ -63,9 +63,25 @@ GOVERNMENT_KEYWORDS = [
 # ==============================================================================
 
 def detect_government_environment(text):
+    """
+    Detects government terms and extracts the exact sentences/lines where they appear.
+    """
     text_lower = text.lower()
-    matched = [term.title() for term in GOVERNMENT_KEYWORDS if re.search(r"\b" + re.escape(term) + r"\b", text_lower)]
-    return list(set(matched))
+    matched_terms = [term.title() for term in GOVERNMENT_KEYWORDS if re.search(r"\b" + re.escape(term) + r"\b", text_lower)]
+    
+    matched_lines = []
+    if matched_terms:
+        # Split text into sentences/lines
+        sentences = re.split(r'(?<=[.!?])\s+|\n+', text)
+        for sentence in sentences:
+            sentence_clean = sentence.strip()
+            # If line contains any government keyword, save it
+            if any(re.search(r"\b" + re.escape(kw) + r"\b", sentence_clean, re.IGNORECASE) for kw in GOVERNMENT_KEYWORDS):
+                if sentence_clean and sentence_clean not in matched_lines:
+                    matched_lines.append(sentence_clean)
+                    
+    # Limit output to top 2 context lines
+    return list(set(matched_terms)), matched_lines[:2]
 
 def fetch_jd_from_url(url):
     headers = {
@@ -197,8 +213,8 @@ with tab_text:
 if jd_text:
     jd_lower = jd_text.lower()
 
-    # Government environment check
-    gov_terms = detect_government_environment(jd_text)
+    # Government environment check (returns terms and matched lines)
+    gov_terms, gov_snippets = detect_government_environment(jd_text)
 
     # 1. Location & Double-Checker
     indiana_locations_found = detect_indiana_locations(jd_text)
@@ -231,9 +247,10 @@ if jd_text:
 
     st.divider()
 
-    # Government Warning Display
-    if gov_terms:
-        st.warning(f"🏛️ **Government / Public Sector Environment Detected:** {', '.join(gov_terms)}")
+# Government Warning Display
+if gov_terms:
+    st.warning(f"🏛️ **Government / Public Sector Environment Detected:** {', '.join(gov_terms)}")
+    st.info("📄 **Relevant Lines from JD:**\n" + "\n".join([f"> *\"{line}\"*" for line in gov_snippets]))
 
     # Dealbreakers Display
     if found_dealbreakers:
