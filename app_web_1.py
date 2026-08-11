@@ -17,9 +17,11 @@ MY_SKILLS = {
     # Technical Skills
     "palo alto", "cisco", "aws", "bgp", "ospf", "nexus",
     "vpn", "firewall", "python", "wireshark", "infoblox",
-    "juniper", "nat", "load balancer", "f5", "dns", "dhcp",
-    "ipsec", "mpls"
+    "juniper", "nat", "load balancer", "f5", "dns", "dhcp"
 }
+
+# Ensure all profile skills are strictly lowercased for exact catalog matching
+MY_SKILLS = {s.lower() for s in MY_SKILLS}
 
 MASTER_SKILL_CATALOG = {
     "aws certified solutions architect – associate",
@@ -71,23 +73,23 @@ def detect_government_environment(text):
     matched_terms = set()
     matched_lines = []
     
-    # Split text by typical sentence/list boundaries
+    # Split text by sentence/list boundaries
     raw_chunks = re.split(r'[.!?\n•|▪–]|(?:\s{2,})', text)
     
     for chunk in raw_chunks:
         sentence_clean = chunk.strip()
         
-        # Skip empty or massive chunks (LinkedIn sidebars/footers often smush into 500+ char strings)
+        # Ignore empty chunks or massive text blobs (>200 chars, e.g., site footers)
         if not sentence_clean or len(sentence_clean) > 200:
             continue
             
-        # Filter out job aggregator noise (dates, salaries, feed headers)
+        # Ignore job feed junk (dates, salaries, feed headers)
         if re.search(r"\d+\s*(?:days?|hours?|weeks?|months?)\s*ago", sentence_clean, re.IGNORECASE):
             continue
         if re.search(r"\$\d+|\b\d{2,3},\d{3}\b", sentence_clean):
             continue
 
-        # Check for government keywords in this VALID, clean sentence
+        # Check for government keywords in valid sentences
         found_in_sentence = False
         for kw in GOVERNMENT_KEYWORDS:
             if re.search(r"\b" + re.escape(kw) + r"\b", sentence_clean, re.IGNORECASE):
@@ -98,7 +100,7 @@ def detect_government_environment(text):
             matched_lines.append(sentence_clean)
                 
     return sorted(list(matched_terms)), matched_lines[:2]
-    
+
 def fetch_jd_from_url(url):
     headers = {
         "User-Agent": (
@@ -112,18 +114,15 @@ def fetch_jd_from_url(url):
         if response.status_code == 200:
             soup = BeautifulSoup(response.text, "html.parser")
             
-            # 1. Remove non-content elements
+            # Remove non-content elements and sidebar job listings
             for element in soup(["script", "style", "nav", "footer", "header", "aside", "form", "svg", "noscript"]):
                 element.decompose()
-                
-            # 2. Add explicit spacing around block elements so words don't get smushed together
+
+            # Insert spacing around block tags so words don't run together
             for tag in soup.find_all(["br", "p", "div", "li", "h1", "h2", "h3", "h4", "td", "tr"]):
                 tag.append(" ")
 
-            # 3. Extract text using newline separator
             text = soup.get_text(separator="\n")
-            
-            # 4. Clean extra spaces while preserving word boundaries
             lines = [line.strip() for line in text.splitlines() if line.strip()]
             clean_text = " ".join(lines)
             
@@ -134,7 +133,7 @@ def fetch_jd_from_url(url):
             return False, f"HTTP Error {response.status_code}: Unable to fetch URL."
     except Exception as e:
         return False, f"Connection Error: {str(e)}"
-        
+
 def detect_indiana_locations(text):
     """Refined double-checker to prevent capturing random prose text."""
     detected = set()
@@ -274,6 +273,11 @@ if jd_text:
         matched_preferred.append(f"Uptime Metric ({detected_uptime})")
 
     st.divider()
+
+    # 📑 Extracted Text Double-Check Section
+    with st.expander("📄 About the Job (Extracted Text Preview)", expanded=False):
+        st.caption("Review the exact text captured by the analyzer to verify matches:")
+        st.write(jd_text)
 
     # Government Warning Display
     if gov_terms:
