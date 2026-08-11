@@ -68,12 +68,37 @@ DEALBREAKERS = [
     "clearance required", "top secret", "ts/sci", "ts / sci", 
     "sci eligible", "secret clearance", "unpaid", 
     "us citizenship required", "u.s. citizenship required", 
-    "us citizen required", "u.s. citizen required", "citizenship required"
+    "us citizen required", "u.s. citizen required", "citizenship required",
+    # Visa Sponsorship Dealbreakers
+    "without employer sponsorship", "without sponsorship", 
+    "no sponsorship", "unable to sponsor", "not able to sponsor",
+    "will not sponsor", "cannot sponsor"
 ]
-
 # ==============================================================================
 # 2. HELPER & SCRAPING FUNCTIONS
 # ==============================================================================
+def detect_sponsorship_dealbreaker(text):
+    """
+    Detects strict 'no sponsorship now or in the future' requirements.
+    """
+    text_lower = text.lower()
+    
+    sponsorship_patterns = [
+        r"without\s+(?:employer\s+)?sponsorship(?:,\s*now\s+or\s+in\s+the\s+future)?",
+        r"no\s+(?:visa\s+)?sponsorship\s+(?:is\s+)?available",
+        r"will\s+not\s+(?:provide\s+)?sponsorship",
+        r"unable\s+to\s+sponsor",
+        r"cannot\s+sponsor\s+(?:h-?1b|visas?)?",
+        r"not\s+eligible\s+for\s+(?:visa\s+)?sponsorship"
+    ]
+    
+    for pattern in sponsorship_patterns:
+        match = re.search(pattern, text_lower)
+        if match:
+            return True, "Visa Constraint: Employer requires work authorization without sponsorship (now or in the future)"
+            
+    return False, None
+    
 def detect_citizenship_and_clearance(text):
     """
     Detects US Citizenship requirements and TS/SCI clearance constraints.
@@ -333,13 +358,16 @@ if jd_text:
     detected_travel_pct, detected_travel_terms = extract_travel_info(jd_text)
     detected_uptime = extract_uptime_percentage(jd_text)
 
-    # Updated Dealbreaker evaluation inside Section 4:
-    location_ok, location_status = evaluate_location_and_workmode(jd_text)
-
+    # 5. Sponsorship Constraint Check
+    sponsorship_blocked, sponsorship_msg = detect_sponsorship_dealbreaker(jd_text)
+    
     # 4. Dealbreakers
     # Update Dealbreakers Check
     found_dealbreakers = [term for term in DEALBREAKERS if term.lower() in jd_lower]
-
+    
+    if sponsorship_blocked and sponsorship_msg not in found_dealbreakers:
+        found_dealbreakers.append(sponsorship_msg)
+        
    # Automatically append location restriction as a dealbreaker if location_ok is False
     if not location_ok:
         found_dealbreakers.append(location_status)
