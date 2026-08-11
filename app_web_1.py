@@ -17,7 +17,8 @@ MY_SKILLS = {
     # Technical Skills
     "palo alto", "cisco", "aws", "bgp", "ospf", "nexus",
     "vpn", "firewall", "python", "wireshark", "infoblox",
-    "juniper", "nat", "load balancer", "f5", "dns", "dhcp"
+    "juniper", "nat", "load balancer", "f5", "dns", "dhcp",
+    "ipsec"
 }
 
 # Ensure all profile skills are strictly lowercased for exact catalog matching
@@ -37,7 +38,8 @@ MASTER_SKILL_CATALOG = {
 
 PREFERRED_TERMS = [
     "automation", "remote", "hybrid", "load balancer", "netscaler", "transit gateway",
-    "24/7", "24x7", "24*7", "emea", "apac", "on-call", "on call"
+    "24/7", "24x7", "24*7", "emea", "apac", "on-call", "on call", "waf", "asm",
+    "cybersecurity"
 ]
 
 APPROVED_INDIANA_CITIES = ["greenwood", "columbus", "indianapolis", "bloomington", "carmel"]
