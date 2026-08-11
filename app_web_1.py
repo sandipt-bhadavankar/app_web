@@ -17,7 +17,7 @@ MY_SKILLS = {
     # Technical Skills
     "palo alto", "cisco", "aws", "bgp", "ospf", "nexus",
     "vpn", "firewall", "python", "wireshark", "infoblox",
-    "juniper", "nat", "load balancer"
+    "juniper", "nat", "load balancer", "f5", "DNS", "DHCP"
 }
 
 MASTER_SKILL_CATALOG = {
@@ -33,7 +33,7 @@ MASTER_SKILL_CATALOG = {
 }
 
 PREFERRED_TERMS = [
-    "automation", "remote", "hybrid", "load balancer", "f5", "netscaler", "transit gateway",
+    "automation", "remote", "hybrid", "load balancer", "netscaler", "transit gateway",
     "24/7", "24x7", "24*7", "emea", "apac", "on-call", "on call"
 ]
 
