@@ -206,11 +206,39 @@ def evaluate_location_and_workmode(text):
     is_remote = any(keyword in text_lower for keyword in REMOTE_KEYWORDS)
     found_approved_city = next((city for city in APPROVED_INDIANA_CITIES if city in text_lower), None)
 
+    # 1. Check for State/City-Restricted Remote Roles (e.g., "Remote in Menomonee Falls, WI")
+    # Matches patterns like "Remote in City, ST", "Remote - WI", "Must reside in Wisconsin"
+    location_pattern = r"(?:remote\s+in|remote\s*-\s*|based\s+in|reside\s+in|located\s+in)\s+([A-Za-z\s]+),\s*([A-Za-z]{2})\b"
+    loc_match = re.search(location_pattern, text, re.IGNORECASE)
+
+    if loc_match:
+        city_found, state_found = loc_match.group(1).strip().title(), loc_match.group(2).upper()
+        
+        # If restricted remote is in Indiana near an approved city
+        if state_found in ["IN", "INDIANA"]:
+            if any(approved in city_found.lower() for approved in APPROVED_INDIANA_CITIES):
+                return True, f"Remote role (Restricted to {city_found}, IN)"
+            return False, f"Location Constraint: Remote role restricted to {city_found}, IN (Outside approved cities)"
+        else:
+            # Restricted to another state (e.g., WI, IL, OH)
+            return False, f"Location Constraint: Restricted Remote role in {city_found}, {state_found} (Not in Indiana)"
+
+    # 2. General Remote check
     if is_remote:
+        # If mentions explicit Indiana reference
         if found_approved_city:
             return True, f"Remote role (Based near {found_approved_city.title()}, IN)"
+        
+        # Check if non-Indiana states are explicitly attached to the remote requirement
+        non_in_state_match = re.search(r"\b(?:must\s+live\s+in|reside\s+in)\s+([A-Za-z\s]+)\b", text_lower)
+        if non_in_state_match:
+            detected_state = non_in_state_match.group(1).strip().title()
+            if "indiana" not in detected_state.lower():
+                return False, f"Location Constraint: Remote requires living in {detected_state}"
+
         return True, "Remote role (Location flexible across states)"
 
+    # 3. Onsite / Local Approved City Check
     if found_approved_city:
         return True, f"Approved local city detected: {found_approved_city.title()}, IN"
 
@@ -305,15 +333,21 @@ if jd_text:
     detected_travel_pct, detected_travel_terms = extract_travel_info(jd_text)
     detected_uptime = extract_uptime_percentage(jd_text)
 
+    # Updated Dealbreaker evaluation inside Section 4:
+    location_ok, location_status = evaluate_location_and_workmode(jd_text)
+
     # 4. Dealbreakers
     # Update Dealbreakers Check
     found_dealbreakers = [term for term in DEALBREAKERS if term.lower() in jd_lower]
+
+   # Automatically append location restriction as a dealbreaker if location_ok is False
     if not location_ok:
-        found_dealbreakers.append(f"Location Constraint: {location_status}")
+        found_dealbreakers.append(location_status)
     if detected_travel_pct > max_travel_limit:
         found_dealbreakers.append(f"High Travel Required ({detected_travel_pct}% exceeds {max_travel_limit}% limit)")
     st.divider()
-
+    
+        
     # Display Citizenship / TS/SCI Flags immediately if detected
     if cit_and_clearance_flags:
         st.error("🚨 **CRITICAL CONSTRAINTS DETECTED:**")
