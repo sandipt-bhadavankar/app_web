@@ -64,36 +64,40 @@ GOVERNMENT_KEYWORDS = [
 
 def detect_government_environment(text):
     """
-    Detects government terms and extracts short, clean context sentences
-    while filtering out job feed aggregators and sidebar text blocks.
+    Detects government terms ONLY in clean, readable sentences to prevent
+    false positives from massive web-scraper text blobs (like LinkedIn footers).
     """
-    text_lower = text.lower()
-    matched_terms = [term.title() for term in GOVERNMENT_KEYWORDS if re.search(r"\b" + re.escape(term) + r"\b", text_lower)]
-    
+    matched_terms = set()
     matched_lines = []
-    if matched_terms:
-        # Split text by typical sentence/list boundaries
-        raw_chunks = re.split(r'[.!?\n•|▪–]|(?:\s{2,})', text)
+    
+    # Split text by typical sentence/list boundaries
+    raw_chunks = re.split(r'[.!?\n•|▪–]|(?:\s{2,})', text)
+    
+    for chunk in raw_chunks:
+        sentence_clean = chunk.strip()
         
-        for chunk in raw_chunks:
-            sentence_clean = chunk.strip()
+        # Skip empty or massive chunks (LinkedIn sidebars/footers often smush into 500+ char strings)
+        if not sentence_clean or len(sentence_clean) > 200:
+            continue
             
-            if not sentence_clean:
-                continue
+        # Filter out job aggregator noise (dates, salaries, feed headers)
+        if re.search(r"\d+\s*(?:days?|hours?|weeks?|months?)\s*ago", sentence_clean, re.IGNORECASE):
+            continue
+        if re.search(r"\$\d+|\b\d{2,3},\d{3}\b", sentence_clean):
+            continue
+
+        # Check for government keywords in this VALID, clean sentence
+        found_in_sentence = False
+        for kw in GOVERNMENT_KEYWORDS:
+            if re.search(r"\b" + re.escape(kw) + r"\b", sentence_clean, re.IGNORECASE):
+                matched_terms.add(kw.title())
+                found_in_sentence = True
+        
+        if found_in_sentence and sentence_clean not in matched_lines:
+            matched_lines.append(sentence_clean)
                 
-            # Filter out job aggregator noise (dates, salaries, feed headers)
-            if re.search(r"\d+\s*(?:days?|hours?|weeks?|months?)\s*ago", sentence_clean, re.IGNORECASE):
-                continue
-            if re.search(r"\$\d+|\b\d{2,3},\d{3}\b", sentence_clean):
-                continue
-
-            # If clean sentence contains government terms and is concise
-            if any(re.search(r"\b" + re.escape(kw) + r"\b", sentence_clean, re.IGNORECASE) for kw in GOVERNMENT_KEYWORDS):
-                if len(sentence_clean) <= 200 and sentence_clean not in matched_lines:
-                    matched_lines.append(sentence_clean)
-                    
-    return list(set(matched_terms)), matched_lines[:2]
-
+    return sorted(list(matched_terms)), matched_lines[:2]
+    
 def fetch_jd_from_url(url):
     headers = {
         "User-Agent": (
