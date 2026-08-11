@@ -17,7 +17,8 @@ MY_SKILLS = {
     # Technical Skills
     "palo alto", "cisco", "aws", "bgp", "ospf", "nexus",
     "vpn", "firewall", "python", "wireshark", "infoblox",
-    "juniper", "nat", "load balancer", "f5", "DNS", "DHCP"
+    "juniper", "nat", "load balancer", "f5", "DNS", "DHCP",
+    "Dns", "Dhcp"
 }
 
 MASTER_SKILL_CATALOG = {
