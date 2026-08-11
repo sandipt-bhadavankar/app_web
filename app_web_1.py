@@ -107,20 +107,29 @@ def fetch_jd_from_url(url):
         if response.status_code == 200:
             soup = BeautifulSoup(response.text, "html.parser")
             
-            # Remove non-content elements and sidebar job listings
-            for element in soup(["script", "style", "nav", "footer", "header", "aside", "form"]):
+            # 1. Remove non-content elements
+            for element in soup(["script", "style", "nav", "footer", "header", "aside", "form", "svg", "noscript"]):
                 element.decompose()
                 
-            text = soup.get_text(separator=". ")
-            clean_text = " ".join(text.split())
+            # 2. Add explicit spacing around block elements so words don't get smushed together
+            for tag in soup.find_all(["br", "p", "div", "li", "h1", "h2", "h3", "h4", "td", "tr"]):
+                tag.append(" ")
+
+            # 3. Extract text using newline separator
+            text = soup.get_text(separator="\n")
+            
+            # 4. Clean extra spaces while preserving word boundaries
+            lines = [line.strip() for line in text.splitlines() if line.strip()]
+            clean_text = " ".join(lines)
+            
             if len(clean_text) < 150:
-                return False, "Fetched content was too short. Page might require login or block scrapers."
+                return False, "Fetched content was too short. Site may require login or block scrapers."
             return True, clean_text
         else:
             return False, f"HTTP Error {response.status_code}: Unable to fetch URL."
     except Exception as e:
         return False, f"Connection Error: {str(e)}"
-
+        
 def detect_indiana_locations(text):
     """Refined double-checker to prevent capturing random prose text."""
     detected = set()
